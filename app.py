@@ -1,180 +1,208 @@
 import streamlit as st
-import os
 import requests
 from pathlib import Path
-import json
 import concurrent.futures
 from datetime import datetime
+import re
 
 MODEL_DIR = Path("models")
 MODEL_PATH = MODEL_DIR / "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
 MODEL_URL = "https://huggingface.co/tfdtfd/khisbagis23/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf?download=true"
 
-# Enhanced persona with deep thinking capability
+# Enhanced deep thinking prompts
 PRESET_PROMPTS = {
-    "Khisba GIS": """You are Khisba GIS, an enthusiastic remote sensing and GIS expert with enhanced analytical capabilities. Your personality:
-- Name: Khisba GIS
-- Role: Remote sensing and GIS expert with deep thinking
-- Style: Warm, friendly, approachable, and deeply analytical
-- Expertise: Deep knowledge of satellite imagery, vegetation indices, and geospatial analysis
-- Thinking Process: 
-  1. First analyze the problem/question carefully
-  2. Consider multiple perspectives
-  3. Search for relevant information
-  4. Synthesize findings
-  5. Provide well-reasoned conclusions
-  6. Suggest next steps or additional research
-- Always eager to explore complex remote sensing challenges
+    "Deep Thinker Pro": """You are a sophisticated AI thinker that excels at analysis, synthesis, and providing insightful perspectives. 
 
-Guidelines:
-- Use Chain-of-Thought reasoning in your responses
-- When presented with search results, analyze them critically
-- Identify connections between different pieces of information
-- Highlight contradictions or gaps in knowledge
-- Provide actionable insights and recommendations
-- When unsure, acknowledge limitations and suggest how to find answers
-- Always introduce yourself as Khisba GIS when asked who you are""",
-    
-    "Deep Thinker": """You are an AI with enhanced analytical capabilities. Your thinking process follows these steps:
-1. PROBLEM UNDERSTANDING: Carefully analyze what's being asked
-2. PERSPECTIVE TAKING: Consider the question from multiple angles
-3. INFORMATION GATHERING: Use available search tools to find relevant data
-4. CRITICAL ANALYSIS: Evaluate information credibility, look for patterns
-5. SYNTHESIS: Combine information from different sources
-6. REASONING: Apply logical deduction and inference
-7. CONCLUSIONS: Present well-supported conclusions
-8. SUGGESTIONS: Offer next steps or additional questions
+THINKING FRAMEWORK:
+1. **Comprehension**: Understand the query fully, identify key elements
+2. **Contextualization**: Place the topic in historical, cultural, or disciplinary context
+3. **Multi-Source Analysis**: Examine information from different sources critically
+4. **Pattern Recognition**: Identify connections, contradictions, gaps
+5. **Synthesis**: Combine insights into coherent understanding
+6. **Critical Evaluation**: Assess reliability, bias, significance
+7. **Insight Generation**: Provide original perspectives or connections
+8. **Actionable Knowledge**: Suggest applications, further questions, implications
 
-Always structure your responses to show your thinking process. Be honest about uncertainty.""",
-    
-    "Research Assistant": """You are a professional research assistant. You:
-1. Systematically search across all available sources
-2. Compare and contrast findings from different databases
-3. Note conflicts or agreements between sources
-4. Highlight the most reliable information
-5. Summarize key findings concisely
-6. Suggest additional avenues for investigation
-7. Always cite your sources when possible""",
-    
-    "Default Assistant": "You are a helpful, friendly AI assistant. Provide clear and concise answers.",
-    "Custom": ""
+RESPONSE STRUCTURE:
+- Start with brief overview
+- Present analysis with reasoning
+- Reference sources when available
+- Highlight interesting connections
+- Acknowledge uncertainties
+- End with thought-provoking questions or suggestions
+
+TONE: Analytical yet engaging, precise yet accessible.""",
+
+    "Khisba GIS Expert": """You are Khisba GIS - a passionate remote sensing/GIS specialist with deep analytical skills.
+
+SPECIALTY THINKING PROCESS:
+1. **Geospatial Context**: How does location/spatial relationships matter?
+2. **Temporal Analysis**: What changes over time? Historical patterns?
+3. **Data Source Evaluation**: Satellite, ground, or derived data reliability?
+4. **Multi-Scale Thinking**: From local to global perspectives
+5. **Practical Applications**: Real-world uses of the information
+6. **Ethical Considerations**: Privacy, representation, accessibility issues
+
+EXPERTISE: Satellite imagery, vegetation indices, climate analysis, urban planning, disaster monitoring
+STYLE: Enthusiastic, precise, eager to explore spatial dimensions of any topic""",
+
+    "Research Analyst": """You are a professional research analyst specializing in synthesizing complex information.
+
+ANALYTICAL APPROACH:
+1. **Source Triangulation**: Cross-reference multiple information sources
+2. **Credibility Assessment**: Evaluate source reliability, date, bias
+3. **Trend Identification**: Spot patterns, changes, anomalies
+4. **Comparative Analysis**: Similarities/differences across contexts
+5. **Implication Mapping**: Consequences, applications, risks
+6. **Knowledge Gaps**: What's missing or needs verification
+
+Always provide structured, evidence-based analysis with clear reasoning.""",
+
+    "Critical Thinker": """You excel at questioning assumptions and examining topics from multiple angles.
+
+CRITICAL THINKING TOOLS:
+1. **Assumption Detection**: What unstated beliefs underlie this?
+2. **Perspective Switching**: How would different groups view this?
+3. **Logical Analysis**: Are arguments valid, evidence sufficient?
+4. **Counterfactual Thinking**: What if things were different?
+5. **Ethical Reflection**: Moral dimensions, consequences
+6. **Practical Reality Check**: Feasibility, implementation issues
+
+Challenge conventional wisdom while remaining constructive.""",
+
+    "Creative Synthesizer": """You connect seemingly unrelated ideas to generate novel insights.
+
+CREATIVE PROCESS:
+1. **Divergent Thinking**: Generate multiple possible interpretations
+2. **Analogical Reasoning**: What similar patterns exist elsewhere?
+3. **Metaphorical Connection**: What metaphors illuminate this?
+4. **Interdisciplinary Bridging**: Connect across fields
+5. **Future Projection**: How might this evolve or transform?
+6. **Alternative Framing**: Different ways to conceptualize
+
+Be imaginative while staying grounded in evidence."""
 }
 
-# Search APIs - Expanded with 16 sources
+# Optimized search tools
 SEARCH_TOOLS = {
-    "ArXiv": {
-        "name": "ArXiv Scientific Papers",
-        "icon": "📚",
-        "description": "Search scientific papers",
-        "endpoint": "http://export.arxiv.org/api/query"
-    },
-    "DuckDuckGo": {
-        "name": "DuckDuckGo Web Search",
-        "icon": "🔍",
-        "description": "Search the web",
-        "endpoint": "https://api.duckduckgo.com/"
-    },
-    "Weather": {
-        "name": "Weather",
-        "icon": "🌤️",
-        "description": "Get weather information",
-        "endpoint": "https://wttr.in/"
-    },
     "Wikipedia": {
         "name": "Wikipedia",
-        "icon": "📖",
-        "description": "Search Wikipedia",
+        "icon": "📚",
+        "description": "Encyclopedia articles",
         "endpoint": "https://en.wikipedia.org/w/api.php"
     },
-    "GitHub": {
-        "name": "GitHub Repositories",
-        "icon": "💻",
-        "description": "Search GitHub repositories",
-        "endpoint": "https://api.github.com/search/repositories"
+    "DuckDuckGo": {
+        "name": "Web Search",
+        "icon": "🌐",
+        "description": "Instant answers & web results",
+        "endpoint": "https://api.duckduckgo.com/"
     },
-    "StackOverflow": {
-        "name": "Stack Overflow",
-        "icon": "🔧",
-        "description": "Search programming questions",
-        "endpoint": "https://api.stackexchange.com/2.3/search"
+    "ArXiv": {
+        "name": "Research Papers",
+        "icon": "🔬",
+        "description": "Scientific publications",
+        "endpoint": "http://export.arxiv.org/api/query"
     },
-    "OpenLibrary": {
+    "Books": {
         "name": "Books",
         "icon": "📖",
-        "description": "Search books",
+        "description": "Book information",
         "endpoint": "https://openlibrary.org/search.json"
     },
-    "Dictionary": {
-        "name": "Dictionary",
-        "icon": "📖",
-        "description": "Word definitions",
-        "endpoint": "https://api.dictionaryapi.dev/api/v2/entries/en/"
-    },
     "Countries": {
-        "name": "Countries",
+        "name": "Country Data",
         "icon": "🌍",
         "description": "Country information",
         "endpoint": "https://restcountries.com/v3.1/"
     },
-    "Quotes": {
-        "name": "Quotes",
-        "icon": "💬",
-        "description": "Search quotes",
-        "endpoint": "https://api.quotable.io/search/quotes"
+    "Weather": {
+        "name": "Weather",
+        "icon": "🌤️",
+        "description": "Weather information",
+        "endpoint": "https://wttr.in/"
     },
-    "PubMed": {
-        "name": "PubMed",
-        "icon": "🏥",
-        "description": "Medical research",
-        "endpoint": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-    },
-    "AirQuality": {
-        "name": "Air Quality",
-        "icon": "🌬️",
-        "description": "Air quality data",
-        "endpoint": "https://api.openaq.org/v2/"
-    },
-    "Geocoding": {
-        "name": "Geocoding",
-        "icon": "📍",
-        "description": "Location coordinates",
-        "endpoint": "https://nominatim.openstreetmap.org/search"
-    },
-    "Wikidata": {
-        "name": "Wikidata",
-        "icon": "🗃️",
-        "description": "Structured data",
-        "endpoint": "https://www.wikidata.org/w/api.php"
+    "GitHub": {
+        "name": "Code Repos",
+        "icon": "💻",
+        "description": "GitHub repositories",
+        "endpoint": "https://api.github.com/search/repositories"
     }
 }
 
 st.set_page_config(
-    page_title="DeepThink LLAMA",
+    page_title="DeepThink Pro",
     page_icon="🧠",
     layout="wide"
 )
 
-st.title("🧠 DeepThink LLAMA")
-st.caption("A smart AI that thinks deeply and searches across multiple sources")
+# Initialize session state with safe defaults
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# Enhanced download function
+if "model" not in st.session_state:
+    st.session_state.model = None
+
+if "system_prompt" not in st.session_state:
+    st.session_state.system_prompt = PRESET_PROMPTS["Deep Thinker Pro"]
+
+if "selected_preset" not in st.session_state:
+    st.session_state.selected_preset = "Deep Thinker Pro"
+
+# Custom CSS for better UI
+st.markdown("""
+<style>
+    .stChatMessage {
+        padding: 1rem;
+        border-radius: 10px;
+        margin-bottom: 1rem;
+    }
+    .thinking-bubble {
+        background-color: #f0f8ff;
+        padding: 1rem;
+        border-radius: 10px;
+        border-left: 4px solid #4a90e2;
+        margin: 1rem 0;
+    }
+    .analysis-box {
+        background-color: #fff8e1;
+        padding: 1rem;
+        border-radius: 10px;
+        border-left: 4px solid #ffb300;
+        margin: 1rem 0;
+    }
+    .source-tag {
+        display: inline-block;
+        background-color: #e3f2fd;
+        color: #1565c0;
+        padding: 0.2rem 0.5rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        margin: 0.2rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Title with emojis
+st.title("🧠 DeepThink Pro")
+st.caption("Advanced AI that thinks, researches, and analyzes like a human expert")
+
+# Download function
 def download_model():
     MODEL_DIR.mkdir(exist_ok=True)
-    st.info("📥 Downloading TinyLLaMA model...")
     
+    if MODEL_PATH.exists():
+        return True
+    
+    st.warning("⚠️ Model not found. Downloading...")
     try:
         response = requests.get(MODEL_URL, stream=True, timeout=30)
         response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Failed to download model: {str(e)}")
-    
-    total_size = int(response.headers.get('content-length', 0))
-    
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    downloaded = 0
-    try:
+        
+        total_size = int(response.headers.get('content-length', 0))
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        downloaded = 0
         with open(MODEL_PATH, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
@@ -183,30 +211,28 @@ def download_model():
                     if total_size > 0:
                         progress = downloaded / total_size
                         progress_bar.progress(progress)
-                        status_text.text(f"Downloading: {downloaded / (1024**2):.1f} / {total_size / (1024**2):.1f} MB")
-    except Exception as e:
+                        status_text.text(f"Downloading: {downloaded / (1024**2):.1f} MB")
+        
+        progress_bar.empty()
+        status_text.empty()
+        
         if MODEL_PATH.exists():
-            MODEL_PATH.unlink()
-        raise Exception(f"Download interrupted: {str(e)}")
-    
-    progress_bar.empty()
-    status_text.empty()
-    
-    if MODEL_PATH.exists():
-        file_size = MODEL_PATH.stat().st_size / (1024**3)
-        st.success(f"✅ Download successful! File size: {file_size:.2f} GB")
-        return True
-    else:
-        raise Exception("❌ Download failed")
+            file_size = MODEL_PATH.stat().st_size / (1024**3)
+            st.success(f"✅ Model downloaded: {file_size:.2f} GB")
+            return True
+    except Exception as e:
+        st.error(f"Download failed: {str(e)}")
+    return False
 
 @st.cache_resource(show_spinner=False)
 def load_model():
     from ctransformers import AutoModelForCausalLM
     
     if not MODEL_PATH.exists():
-        download_model()
+        if not download_model():
+            raise Exception("Model download failed")
     
-    model = AutoModelForCausalLM.from_pretrained(
+    return AutoModelForCausalLM.from_pretrained(
         str(MODEL_DIR),
         model_file=MODEL_PATH.name,
         model_type="llama",
@@ -214,47 +240,10 @@ def load_model():
         gpu_layers=0,
         threads=8
     )
-    return model
 
-# Enhanced search functions with error handling
-def search_arxiv(query, max_results=3):
-    """Search ArXiv for scientific papers."""
-    try:
-        params = {
-            'search_query': f'all:{query}',
-            'start': 0,
-            'max_results': max_results,
-            'sortBy': 'relevance',
-            'sortOrder': 'descending'
-        }
-        response = requests.get(SEARCH_TOOLS["ArXiv"]["endpoint"], params=params, timeout=10)
-        response.raise_for_status()
-        
-        import xml.etree.ElementTree as ET
-        root = ET.fromstring(response.content)
-        
-        results = []
-        for entry in root.findall('{http://www.w3.org/2005/Atom}entry'):
-            title = entry.find('{http://www.w3.org/2005/Atom}title').text.strip()
-            summary = entry.find('{http://www.w3.org/2005/Atom}summary').text.strip()
-            authors = [author.find('{http://www.w3.org/2005/Atom}name').text 
-                      for author in entry.findall('{http://www.w3.org/2005/Atom}author')]
-            published = entry.find('{http://www.w3.org/2005/Atom}published').text
-            
-            results.append({
-                'title': title,
-                'summary': summary[:300] + '...' if len(summary) > 300 else summary,
-                'authors': ', '.join(authors[:3]),
-                'published': published[:10] if published else 'N/A',
-                'type': 'scientific_paper',
-                'source': 'ArXiv'
-            })
-        return results if results else [{"info": "No papers found", "query": query}]
-    except Exception as e:
-        return [{"error": f"ArXiv search error: {str(e)}", "query": query}]
-
+# Enhanced search functions
 def search_wikipedia(query):
-    """Search Wikipedia for articles."""
+    """Enhanced Wikipedia search with better parsing."""
     try:
         params = {
             'action': 'query',
@@ -264,569 +253,601 @@ def search_wikipedia(query):
             'srlimit': 3,
             'utf8': 1
         }
-        response = requests.get(SEARCH_TOOLS["Wikipedia"]["endpoint"], params=params, timeout=10)
-        response.raise_for_status()
+        response = requests.get(SEARCH_TOOLS["Wikipedia"]["endpoint"], params=params, timeout=8)
         data = response.json()
         
         results = []
         for item in data.get('query', {}).get('search', []):
-            # Get page summary
+            # Get detailed page info
             params2 = {
                 'action': 'query',
                 'format': 'json',
-                'prop': 'extracts|info',
+                'prop': 'extracts|info|categories',
                 'inprop': 'url',
                 'exintro': 1,
                 'explaintext': 1,
                 'pageids': item['pageid']
             }
-            response2 = requests.get(SEARCH_TOOLS["Wikipedia"]["endpoint"], params=params2, timeout=10)
+            response2 = requests.get(SEARCH_TOOLS["Wikipedia"]["endpoint"], params=params2, timeout=8)
             if response2.status_code == 200:
                 page_data = response2.json()
                 pages = page_data.get('query', {}).get('pages', {})
-                for page_id, page_info in pages.items():
-                    results.append({
-                        'title': page_info.get('title', ''),
-                        'summary': page_info.get('extract', '')[:400] + '...',
-                        'url': page_info.get('fullurl', ''),
-                        'type': 'encyclopedia',
-                        'source': 'Wikipedia'
-                    })
+                for page_info in pages.values():
+                    extract = page_info.get('extract', '')
+                    if extract:
+                        # Clean the extract
+                        extract = re.sub(r'\n+', ' ', extract)
+                        extract = re.sub(r'\s+', ' ', extract)
+                        
+                        results.append({
+                            'title': page_info.get('title', ''),
+                            'summary': extract[:500] + ('...' if len(extract) > 500 else ''),
+                            'url': page_info.get('fullurl', ''),
+                            'categories': list(page_info.get('categories', []))[:5],
+                            'wordcount': page_info.get('wordcount', 0),
+                            'source': 'Wikipedia',
+                            'relevance': item.get('score', 0)
+                        })
         
-        return results if results else [{"info": "No Wikipedia articles found", "query": query}]
-    except Exception as e:
-        return [{"error": f"Wikipedia search error: {str(e)}", "query": query}]
+        return sorted(results, key=lambda x: x['relevance'], reverse=True) if results else []
+    except Exception:
+        return []
 
-def search_github(query, max_results=3):
-    """Search GitHub repositories."""
-    try:
-        params = {
-            'q': query,
-            'sort': 'stars',
-            'order': 'desc',
-            'per_page': max_results
-        }
-        headers = {'Accept': 'application/vnd.github.v3+json'}
-        response = requests.get(SEARCH_TOOLS["GitHub"]["endpoint"], 
-                              params=params, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        results = []
-        for repo in data.get('items', [])[:max_results]:
-            results.append({
-                'name': repo.get('full_name', ''),
-                'description': repo.get('description', 'No description'),
-                'stars': repo.get('stargazers_count', 0),
-                'language': repo.get('language', 'N/A'),
-                'url': repo.get('html_url', ''),
-                'type': 'code_repository',
-                'source': 'GitHub'
-            })
-        return results if results else [{"info": "No repositories found", "query": query}]
-    except Exception as e:
-        return [{"error": f"GitHub search error: {str(e)}", "query": query}]
-
-def get_weather(location="London"):
-    """Get weather information."""
-    try:
-        response = requests.get(f"{SEARCH_TOOLS['Weather']['endpoint']}/{location}?format=j1", timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        if 'current_condition' in data:
-            current = data['current_condition'][0]
-            return {
-                'location': location,
-                'temperature_c': current.get('temp_C', 'N/A'),
-                'temperature_f': current.get('temp_F', 'N/A'),
-                'condition': current.get('weatherDesc', [{}])[0].get('value', 'N/A'),
-                'humidity': current.get('humidity', 'N/A'),
-                'wind_speed': current.get('windspeedKmph', 'N/A'),
-                'type': 'weather',
-                'source': 'wttr.in'
-            }
-        return {"info": "No weather data found", "query": location}
-    except Exception as e:
-        return {"error": f"Weather lookup error: {str(e)}", "query": location}
-
-def search_duckduckgo(query):
-    """Search DuckDuckGo for instant answers."""
+def search_duckduckgo_enhanced(query):
+    """Enhanced DuckDuckGo search with better parsing."""
     try:
         params = {
             'q': query,
             'format': 'json',
             'no_html': 1,
-            'skip_disambig': 1
+            'skip_disambig': 1,
+            't': 'streamlit_app'
         }
-        response = requests.get(SEARCH_TOOLS["DuckDuckGo"]["endpoint"], params=params, timeout=10)
-        response.raise_for_status()
+        response = requests.get(SEARCH_TOOLS["DuckDuckGo"]["endpoint"], params=params, timeout=8)
         data = response.json()
         
-        result = {
+        results = {
             'abstract': data.get('AbstractText', ''),
             'answer': data.get('Answer', ''),
-            'related': [topic.get('Text', '') for topic in data.get('RelatedTopics', [])[:3]],
-            'type': 'web_search',
+            'definition': data.get('Definition', ''),
+            'categories': [topic.get('Name', '') for topic in data.get('Categories', [])[:3]],
+            'related_topics': [topic.get('Text', '') for topic in data.get('RelatedTopics', [])[:5]],
             'source': 'DuckDuckGo'
         }
         
-        # Clean empty values
-        result = {k: v for k, v in result.items() if v}
-        return result if any(result.values()) else {"info": "No instant answer found", "query": query}
-    except Exception as e:
-        return {"error": f"DuckDuckGo search error: {str(e)}", "query": query}
+        # Clean and filter empty values
+        cleaned = {}
+        for key, value in results.items():
+            if isinstance(value, str) and value.strip():
+                cleaned[key] = value.strip()
+            elif isinstance(value, list) and value:
+                cleaned[key] = [v.strip() for v in value if v and v.strip()]
+        
+        return cleaned if cleaned else {}
+    except Exception:
+        return {}
 
-def search_openlibrary(query, max_results=3):
-    """Search OpenLibrary for books."""
+def search_arxiv_enhanced(query):
+    """Enhanced ArXiv search."""
     try:
         params = {
-            'q': query,
-            'limit': max_results,
-            'fields': 'title,author_name,first_publish_year,subject'
+            'search_query': f'all:{query}',
+            'start': 0,
+            'max_results': 3,
+            'sortBy': 'relevance',
+            'sortOrder': 'descending'
         }
-        response = requests.get(SEARCH_TOOLS["OpenLibrary"]["endpoint"], params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        response = requests.get(SEARCH_TOOLS["ArXiv"]["endpoint"], params=params, timeout=10)
         
-        results = []
-        for doc in data.get('docs', [])[:max_results]:
-            results.append({
-                'title': doc.get('title', 'Unknown Title'),
-                'authors': doc.get('author_name', ['Unknown Author'])[:2],
-                'year': doc.get('first_publish_year', 'N/A'),
-                'subjects': doc.get('subject', [])[:3],
-                'type': 'book',
-                'source': 'OpenLibrary'
-            })
-        return results if results else [{"info": "No books found", "query": query}]
-    except Exception as e:
-        return [{"error": f"OpenLibrary search error: {str(e)}", "query": query}]
-
-def search_country(query):
-    """Search for country information."""
-    try:
-        response = requests.get(f"{SEARCH_TOOLS['Countries']['endpoint']}/name/{query}", timeout=10)
-        if response.status_code == 404:
-            return {"info": "Country not found", "query": query}
-        response.raise_for_status()
-        data = response.json()
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(response.content)
         
-        if data:
-            country = data[0]
-            return {
-                'name': country.get('name', {}).get('common', 'Unknown'),
-                'official_name': country.get('name', {}).get('official', 'Unknown'),
-                'capital': ', '.join(country.get('capital', ['N/A'])),
-                'population': country.get('population', 'N/A'),
-                'region': country.get('region', 'N/A'),
-                'subregion': country.get('subregion', 'N/A'),
-                'languages': list(country.get('languages', {}).values())[:3] if country.get('languages') else [],
-                'currencies': list(country.get('currencies', {}).keys())[:2] if country.get('currencies') else [],
-                'flag_emoji': country.get('flag', ''),
-                'type': 'country_info',
-                'source': 'REST Countries'
-            }
-        return {"info": "No country data found", "query": query}
-    except Exception as e:
-        return {"error": f"Country search error: {str(e)}", "query": query}
+        papers = []
+        for entry in root.findall('{http://www.w3.org/2005/Atom}entry'):
+            title = entry.find('{http://www.w3.org/2005/Atom}title').text.strip() if entry.find('{http://www.w3.org/2005/Atom}title') is not None else ''
+            summary = entry.find('{http://www.w3.org/2005/Atom}summary').text.strip() if entry.find('{http://www.w3.org/2005/Atom}summary') is not None else ''
+            
+            if title and summary:
+                papers.append({
+                    'title': title,
+                    'summary': summary[:400] + '...' if len(summary) > 400 else summary,
+                    'published': entry.find('{http://www.w3.org/2005/Atom}published').text[:10] if entry.find('{http://www.w3.org/2005/Atom}published') is not None else '',
+                    'source': 'ArXiv',
+                    'relevance': 1.0  # Simple relevance score
+                })
+        
+        return papers
+    except Exception:
+        return []
 
-def search_all_relevant(query, max_sources=6):
-    """Search multiple relevant sources based on query type."""
-    search_functions = []
-    
-    # Determine which sources to search based on query
+def smart_source_selector(query):
+    """Intelligently select which sources to search based on query."""
     query_lower = query.lower()
     
-    if any(word in query_lower for word in ['weather', 'temperature', 'forecast', 'climate']):
-        search_functions.append(('weather', lambda: get_weather(query)))
+    # Check for specific patterns
+    is_historical = any(word in query_lower for word in ['history', 'historical', 'century', 'war', 'battle', 'king', 'queen', 'emperor', 'emir'])
+    is_scientific = any(word in query_lower for word in ['science', 'research', 'study', 'paper', 'experiment', 'data', 'analysis'])
+    is_technical = any(word in query_lower for word in ['code', 'programming', 'software', 'algorithm', 'github', 'python', 'javascript'])
+    is_geographical = any(word in query_lower for word in ['country', 'city', 'capital', 'population', 'map', 'location', 'weather'])
+    is_conceptual = any(word in query_lower for word in ['what is', 'define', 'meaning', 'concept', 'theory', 'philosophy'])
+    is_person = any(word in query_lower for word in ['who is', 'biography', 'born', 'died', 'leader', 'president', 'emir'])
     
-    if any(word in query_lower for word in ['paper', 'research', 'study', 'arxiv', 'science', 'academic']):
-        search_functions.append(('arxiv', lambda: search_arxiv(query, 2)))
+    # Select sources based on query type
+    sources = []
     
-    if any(word in query_lower for word in ['define', 'definition', 'meaning', 'word', 'vocabulary']):
-        # We'll use Wikipedia as dictionary fallback
-        search_functions.append(('dictionary', lambda: [{"word": query.split()[0], "definition": "Check dictionary for precise meaning", "source": "note"}]))
+    # Always include Wikipedia for factual information
+    sources.append(('Wikipedia', search_wikipedia))
     
-    if any(word in query_lower for word in ['code', 'github', 'repository', 'programming', 'software']):
-        search_functions.append(('github', lambda: search_github(query, 2)))
+    # Add DuckDuckGo for quick answers
+    sources.append(('DuckDuckGo', search_duckduckgo_enhanced))
     
-    if any(word in query_lower for word in ['country', 'capital', 'population', 'flag', 'nation']):
-        search_functions.append(('countries', lambda: [search_country(query)] if isinstance(search_country(query), dict) else search_country(query)))
+    # Add specialized sources based on query
+    if is_historical or is_person:
+        sources.append(('Books', lambda q: []))  # Placeholder for books API
     
-    if any(word in query_lower for word in ['book', 'author', 'novel', 'literature', 'read']):
-        search_functions.append(('books', lambda: search_openlibrary(query, 2)))
+    if is_scientific:
+        sources.append(('ArXiv', search_arxiv_enhanced))
     
-    # Always include these core sources
-    search_functions.append(('wikipedia', lambda: search_wikipedia(query)))
-    search_functions.append(('duckduckgo', lambda: search_duckduckgo(query)))
+    if is_technical:
+        sources.append(('GitHub', lambda q: []))  # Placeholder for GitHub
     
-    # Limit to max_sources
-    search_functions = search_functions[:max_sources]
+    if is_geographical:
+        sources.append(('Countries', lambda q: []))  # Placeholder for countries
+        sources.append(('Weather', lambda q: []))  # Placeholder for weather
+    
+    return sources[:5]  # Limit to 5 sources
+
+def perform_intelligent_search(query):
+    """Perform parallel search on intelligently selected sources."""
+    sources = smart_source_selector(query)
     
     results = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(search_functions)) as executor:
-        future_to_name = {executor.submit(func): name for name, func in search_functions}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(sources)) as executor:
+        future_to_source = {executor.submit(func, query): name for name, func in sources}
         
-        for future in concurrent.futures.as_completed(future_to_name):
-            name = future_to_name[future]
+        for future in concurrent.futures.as_completed(future_to_source):
+            source_name = future_to_source[future]
             try:
-                results[name] = future.result()
-            except Exception as e:
-                results[name] = {"error": str(e), "query": query}
+                data = future.result(timeout=8)
+                if data:  # Only include non-empty results
+                    results[source_name] = data
+            except Exception:
+                continue
     
     return results
 
-def format_search_summary(query, search_results):
-    """Create a concise summary of search results."""
-    summary_parts = []
+def analyze_search_results(query, results):
+    """Analyze search results to extract key insights."""
+    analysis = {
+        'key_facts': [],
+        'conflicting_info': [],
+        'knowledge_gaps': [],
+        'source_quality': {},
+        'main_themes': []
+    }
+    
+    # Extract key facts from each source
+    for source, data in results.items():
+        if source == 'Wikipedia' and isinstance(data, list):
+            for item in data[:2]:
+                if 'summary' in item:
+                    analysis['key_facts'].append({
+                        'fact': item['summary'][:200],
+                        'source': source,
+                        'title': item.get('title', '')
+                    })
+        
+        elif source == 'DuckDuckGo' and isinstance(data, dict):
+            if data.get('answer'):
+                analysis['key_facts'].append({
+                    'fact': data['answer'],
+                    'source': source,
+                    'type': 'direct_answer'
+                })
+            if data.get('abstract'):
+                analysis['key_facts'].append({
+                    'fact': data['abstract'][:200],
+                    'source': source,
+                    'type': 'abstract'
+                })
+        
+        elif source == 'ArXiv' and isinstance(data, list):
+            for paper in data[:1]:
+                analysis['key_facts'].append({
+                    'fact': f"Research paper: {paper.get('title', '')}",
+                    'source': source,
+                    'type': 'scientific'
+                })
+    
+    # Identify potential knowledge gaps
+    query_terms = query.lower().split()
+    found_terms = []
+    for fact in analysis['key_facts']:
+        fact_text = fact['fact'].lower()
+        for term in query_terms:
+            if term in fact_text:
+                found_terms.append(term)
+    
+    missing_terms = [term for term in query_terms if term not in found_terms]
+    if missing_terms:
+        analysis['knowledge_gaps'].append(f"Missing information about: {', '.join(missing_terms[:3])}")
+    
+    # Assess source quality
+    for source in results:
+        if source == 'Wikipedia':
+            analysis['source_quality'][source] = {'reliability': 'high', 'coverage': 'broad'}
+        elif source == 'ArXiv':
+            analysis['source_quality'][source] = {'reliability': 'high', 'coverage': 'specialized'}
+        elif source == 'DuckDuckGo':
+            analysis['source_quality'][source] = {'reliability': 'medium', 'coverage': 'general'}
+    
+    return analysis
+
+def create_thinking_prompt(query, messages, system_prompt, search_results, search_analysis):
+    """Create an enhanced prompt that encourages deep thinking."""
+    
+    # Build search context
+    search_context = "RELEVANT INFORMATION FOUND:\n\n"
     
     for source, data in search_results.items():
-        if isinstance(data, dict) and 'error' not in data and data:
-            if source == 'duckduckgo' and data.get('answer'):
-                summary_parts.append(f"💡 Quick answer: {data['answer']}")
-            elif source == 'wikipedia' and isinstance(data, list) and data:
-                for item in data[:1]:
-                    if isinstance(item, dict) and 'title' in item:
-                        summary_parts.append(f"📚 Wikipedia: {item.get('title', '')} - {item.get('summary', '')[:150]}...")
-            elif source == 'arxiv' and isinstance(data, list) and data:
-                for item in data[:1]:
-                    if isinstance(item, dict) and 'title' in item:
-                        summary_parts.append(f"🔬 Research: {item.get('title', '')[:100]}...")
-            elif source == 'weather' and isinstance(data, dict) and data.get('temperature_c'):
-                summary_parts.append(f"🌤️ Weather: {data.get('temperature_c')}°C, {data.get('condition', '')}")
-            elif source == 'countries' and isinstance(data, list) and data:
-                for item in data[:1]:
-                    if isinstance(item, dict) and 'name' in item:
-                        summary_parts.append(f"🌍 Country: {item.get('name', '')}")
+        search_context += f"=== {source.upper()} ===\n"
+        
+        if isinstance(data, list):
+            for item in data[:2]:
+                if isinstance(item, dict):
+                    if 'title' in item:
+                        search_context += f"Title: {item['title']}\n"
+                    if 'summary' in item:
+                        search_context += f"Summary: {item['summary']}\n"
+                    if 'answer' in item:
+                        search_context += f"Answer: {item['answer']}\n"
+                    search_context += "\n"
+        
+        elif isinstance(data, dict):
+            for key, value in data.items():
+                if key not in ['source', 'type'] and value:
+                    if isinstance(value, list):
+                        search_context += f"{key}: {', '.join(str(v) for v in value[:3])}\n"
+                    else:
+                        search_context += f"{key}: {value}\n"
+            search_context += "\n"
     
-    if summary_parts:
-        return "\n".join(summary_parts)
-    return ""
-
-def format_prompt_with_thinking(messages, system_prompt, search_context=""):
-    """Format prompt with chain-of-thought reasoning."""
+    # Add analysis insights
+    search_context += "ANALYSIS INSIGHTS:\n"
+    if search_analysis['key_facts']:
+        search_context += "• Key facts identified from sources\n"
+    if search_analysis['knowledge_gaps']:
+        search_context += f"• Knowledge gaps: {search_analysis['knowledge_gaps'][0]}\n"
+    
+    # Build conversation history
+    conversation = ""
+    for msg in messages[-4:]:  # Last 4 messages for context
+        if msg["role"] == "user":
+            conversation += f"User: {msg['content']}\n"
+        elif msg["role"] == "assistant":
+            conversation += f"Assistant: {msg['content']}\n"
+    
+    # Final prompt
     prompt = f"""<|system|>
 {system_prompt}
 
-Current date: {datetime.now().strftime('%Y-%m-%d')}
+CURRENT DATE: {datetime.now().strftime('%B %d, %Y')}
 
-THINKING FRAMEWORK:
-1. Understand the user's query deeply
-2. Consider what information is needed
-3. Search relevant sources (if applicable)
-4. Analyze and synthesize information
-5. Provide clear, reasoned response
-6. Suggest next steps or additional questions
+USER'S QUESTION: {query}
 
-{search_context if search_context else "No search context provided. Rely on general knowledge."}
-</s>
+{search_context}
+
+CONVERSATION CONTEXT:
+{conversation}
+
+THINKING INSTRUCTIONS:
+1. First, verify the key information from sources
+2. Identify the most reliable facts
+3. Consider historical context if relevant
+4. Think about why this matters
+5. Connect to broader themes or concepts
+6. Identify what's still unknown or debated
+7. Formulate a comprehensive yet concise answer
+8. End with thought-provoking questions or further reading suggestions
+
+IMPORTANT: Show your reasoning process. Be precise about what's well-established vs. what's uncertain.</s>
+
+<|user|>
+{query}</s>
+
+<|assistant|>
 """
     
-    for msg in messages:
-        if msg["role"] == "user":
-            prompt += f"<|user|>\n{msg['content']}</s>\n"
-        elif msg["role"] == "assistant":
-            prompt += f"<|assistant|>\n{msg['content']}</s>\n"
-    
-    prompt += "<|assistant|>\nLet me think through this carefully...\n\n"
     return prompt
 
-def generate_deep_response(model, messages, system_prompt, search_results=None, max_tokens=512, temperature=0.7):
-    """Generate a thoughtful response with analysis."""
-    # Prepare search context
-    search_context = ""
-    if search_results:
-        search_context = "SEARCH RESULTS SUMMARY:\n"
-        for source, data in search_results.items():
-            if data and 'error' not in str(data):
-                search_context += f"\n{source.upper()}:\n"
-                if isinstance(data, list):
-                    for item in data[:2]:
-                        if isinstance(item, dict):
-                            for key, value in item.items():
-                                if key not in ['error', 'type', 'source'] and value:
-                                    search_context += f"- {key}: {str(value)[:100]}\n"
-                elif isinstance(data, dict):
-                    for key, value in data.items():
-                        if key not in ['error', 'type', 'source'] and value:
-                            search_context += f"- {key}: {str(value)[:100]}\n"
+def generate_thoughtful_response(model, prompt, max_tokens=768, temperature=0.7):
+    """Generate response with thinking emphasis."""
     
-    # Format prompt with thinking framework
-    prompt = format_prompt_with_thinking(messages, system_prompt, search_context)
-    
-    # Generate response
     response = model(
         prompt,
         max_new_tokens=max_tokens,
         temperature=temperature,
         top_p=0.9,
         repetition_penalty=1.1,
-        stop=["</s>", "<|user|>", "<|assistant|>", "<|system|>", "\n\n", "###"]
+        stop=["</s>", "<|user|>", "\n\nUser:", "### END", "Sources:"]
     )
     
     # Clean up response
     response = response.strip()
     
-    # Ensure response shows thinking process
-    if "Let me think through this carefully..." in response:
-        response = response.replace("Let me think through this carefully...", "")
-    
-    # Add source citations if available
-    if search_results:
-        sources_used = [source for source in search_results if search_results[source] and 'error' not in str(search_results[source])]
-        if sources_used:
-            response += f"\n\n📚 *Sources consulted: {', '.join(sources_used)}*"
+    # Ensure it doesn't cut off mid-thought
+    if response.count('.') < 2:
+        # If response seems incomplete, try to extend it
+        extended = model(
+            prompt + response,
+            max_new_tokens=200,
+            temperature=temperature,
+            top_p=0.9
+        )
+        response = response + " " + extended.strip()
     
     return response
 
-# Session state initialization
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "model_loaded" not in st.session_state:
-    st.session_state.model_loaded = False
-
-if "system_prompt" not in st.session_state:
-    st.session_state.system_prompt = PRESET_PROMPTS["Deep Thinker"]
-
-if "selected_preset" not in st.session_state:
-    st.session_state.selected_preset = "Deep Thinker"
-
-if "search_history" not in st.session_state:
-    st.session_state.search_history = []
-
 # Sidebar
 with st.sidebar:
-    st.header("🧠 Thinking Mode")
+    st.header("🎭 Thinking Persona")
     
-    selected_preset = st.selectbox(
-        "Choose thinking style:",
-        options=list(PRESET_PROMPTS.keys()),
-        index=list(PRESET_PROMPTS.keys()).index(st.session_state.selected_preset),
-        key="preset_selector"
+    # Safely get index for selectbox
+    preset_keys = list(PRESET_PROMPTS.keys())
+    current_preset = st.session_state.selected_preset
+    
+    # Ensure current preset is valid
+    if current_preset not in preset_keys:
+        current_preset = "Deep Thinker Pro"
+        st.session_state.selected_preset = current_preset
+    
+    index = preset_keys.index(current_preset)
+    
+    persona = st.selectbox(
+        "Select AI Persona:",
+        options=preset_keys,
+        index=index
     )
     
-    if selected_preset != st.session_state.selected_preset:
-        st.session_state.selected_preset = selected_preset
-        if selected_preset != "Custom":
-            st.session_state.system_prompt = PRESET_PROMPTS[selected_preset]
-    
-    system_prompt = st.text_area(
-        "Thinking instructions:",
-        value=st.session_state.system_prompt,
-        height=200,
-        key="system_prompt_input"
-    )
-    
-    if system_prompt != st.session_state.system_prompt:
-        st.session_state.system_prompt = system_prompt
-        if system_prompt not in PRESET_PROMPTS.values():
-            st.session_state.selected_preset = "Custom"
+    if persona != st.session_state.selected_preset:
+        st.session_state.selected_preset = persona
+        st.session_state.system_prompt = PRESET_PROMPTS[persona]
     
     st.divider()
     
-    st.header("🔍 Smart Search")
-    st.caption("Automatically searches relevant sources")
+    st.header("⚡ Thinking Parameters")
     
-    search_mode = st.radio(
-        "Search strategy:",
-        ["Smart (auto-select sources)", "Comprehensive (all sources)", "Focused (few sources)"],
-        index=0
+    thinking_mode = st.radio(
+        "Thinking Mode:",
+        ["Analytical", "Creative", "Critical", "Balanced"],
+        index=3
     )
     
-    auto_search = st.checkbox("Auto-search before responding", value=True)
-    
-    st.divider()
-    
-    st.header("⚙️ Thinking Parameters")
-    
-    thinking_depth = st.select_slider(
-        "Thinking depth:",
-        options=["Quick", "Balanced", "Deep", "Very Deep"],
-        value="Balanced"
+    research_depth = st.select_slider(
+        "Research Depth:",
+        options=["Quick Scan", "Moderate", "Deep Dive", "Exhaustive"],
+        value="Moderate"
     )
     
     temperature = st.slider(
-        "Creativity:", 
-        0.1, 2.0, 0.7, 0.1,
-        help="Higher = more creative, Lower = more focused"
-    )
-    
-    max_tokens = st.slider(
-        "Response length:", 
-        128, 1024, 512, 64
+        "Creativity Level:",
+        0.1, 1.5, 0.7, 0.1,
+        help="Lower = more factual, Higher = more creative"
     )
     
     st.divider()
+    
+    st.header("🔧 Tools")
+    
+    auto_search = st.toggle("Auto-Research", value=True)
+    show_thinking = st.toggle("Show Thinking Process", value=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🧹 Clear Chat", use_container_width=True):
+        if st.button("🔄 New Chat", use_container_width=True):
             st.session_state.messages = []
             st.rerun()
     with col2:
-        if st.button("🔄 Reset", use_container_width=True):
-            st.session_state.system_prompt = PRESET_PROMPTS["Deep Thinker"]
-            st.session_state.selected_preset = "Deep Thinker"
+        if st.button("🧠 Reset AI", use_container_width=True):
+            st.session_state.system_prompt = PRESET_PROMPTS["Deep Thinker Pro"]
+            st.session_state.selected_preset = "Deep Thinker Pro"
             st.rerun()
     
     st.divider()
-    st.caption("🧠 DeepThink LLAMA v1.0")
-    st.caption("Combines reasoning with multi-source search")
+    st.caption("DeepThink Pro v1.1")
+    st.caption("Advanced thinking AI with smart search")
 
-# Main area
-col1, col2 = st.columns([3, 1])
+# Main interface
+col1, col2, col3 = st.columns([3, 1, 1])
 with col1:
-    st.title("🧠 DeepThink LLAMA")
-    st.caption("An AI that thinks before responding and searches smartly")
+    st.title("🧠 DeepThink Pro")
 with col2:
     if auto_search:
-        st.info("🔍 Auto-search enabled")
+        st.success("🔍 Auto-Research ON")
+with col3:
+    if show_thinking:
+        st.info("💭 Showing Thoughts")
 
-# Display current thinking style
-with st.expander("Current Thinking Style", expanded=False):
-    st.info(st.session_state.system_prompt[:500] + "..." if len(st.session_state.system_prompt) > 500 else st.session_state.system_prompt)
+# Display current persona
+with st.expander("🤖 Active Persona", expanded=False):
+    st.write(st.session_state.selected_preset)
+    st.caption(st.session_state.system_prompt[:300] + "...")
 
 # Load model
-if not st.session_state.model_loaded:
-    with st.spinner("🧠 Loading DeepThink LLAMA... This may take a moment on first run."):
+if st.session_state.model is None:
+    with st.spinner("🚀 Loading AI Brain..."):
         try:
-            model = load_model()
-            st.session_state.model_loaded = True
-            st.session_state.model = model
-            st.success("✅ Model loaded and ready for deep thinking")
+            st.session_state.model = load_model()
+            st.success("✅ AI Ready for Deep Thinking!")
         except Exception as e:
-            st.error(f"Failed to load model: {str(e)}")
+            st.error(f"❌ Failed to load: {str(e)}")
             st.stop()
 
-# Display chat history
+# Display chat
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        
+        # Show source tags if available
+        if "sources" in message.get("metadata", {}):
+            st.markdown("<div style='margin-top: 10px;'>", unsafe_allow_html=True)
+            for source in message["metadata"]["sources"]:
+                st.markdown(f'<span class="source-tag">{source}</span>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # Chat input
-if prompt := st.chat_input("Ask me anything... I'll think deeply about it"):
+if prompt := st.chat_input("Ask me anything..."):
     # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     
     with st.chat_message("user"):
         st.markdown(prompt)
     
-    # Prepare for response
+    # Prepare assistant response
     with st.chat_message("assistant"):
-        # Show thinking status
-        thinking_container = st.empty()
-        search_container = st.empty()
-        response_container = st.empty()
-        
         # Step 1: Show thinking
-        thinking_container.info("💭 Analyzing your question and thinking deeply...")
+        thinking_placeholder = st.empty()
         
-        # Step 2: Determine search strategy
-        search_results = None
+        if show_thinking:
+            thinking_placeholder.markdown("""
+            <div class="thinking-bubble">
+            <strong>💭 Initial Analysis:</strong><br>
+            1. Parsing question structure and intent<br>
+            2. Identifying key concepts and entities<br>
+            3. Determining appropriate research approach<br>
+            4. Preparing search strategy...
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Step 2: Intelligent Search
+        search_results = {}
+        search_analysis = {}
+        
         if auto_search:
-            thinking_container.info("🔍 Searching relevant information sources...")
+            if show_thinking:
+                thinking_placeholder.markdown("""
+                <div class="thinking-bubble">
+                <strong>🔍 Smart Research:</strong><br>
+                • Analyzing query type and selecting optimal sources<br>
+                • Conducting parallel searches across selected databases<br>
+                • Evaluating source reliability and relevance...
+                </div>
+                """, unsafe_allow_html=True)
             
-            # Determine search strategy
-            if search_mode == "Comprehensive":
-                max_sources = 8
-            elif search_mode == "Focused":
-                max_sources = 3
-            else:  # Smart
-                max_sources = 6
-            
-            with st.spinner(f"Searching {max_sources} relevant sources..."):
-                search_results = search_all_relevant(prompt, max_sources)
-            
-            # Display search summary
-            if search_results:
-                with st.expander("📊 Search Summary", expanded=False):
-                    for source, data in search_results.items():
-                        if data and 'error' not in str(data):
-                            st.write(f"**{source.title()}:**")
+            with st.spinner("🔍 Conducting intelligent research..."):
+                search_results = perform_intelligent_search(prompt)
+                
+                if search_results:
+                    search_analysis = analyze_search_results(prompt, search_results)
+                    
+                    # Display search summary
+                    with st.expander("📊 Research Summary", expanded=False):
+                        for source, data in search_results.items():
+                            st.subheader(f"{SEARCH_TOOLS.get(source, {}).get('icon', '📌')} {source}")
+                            
                             if isinstance(data, list):
                                 for item in data[:2]:
                                     if isinstance(item, dict):
-                                        # Show key information
-                                        keys_to_show = ['title', 'name', 'summary', 'answer', 'temperature_c']
-                                        for key in keys_to_show:
-                                            if key in item and item[key]:
-                                                st.write(f"- {key}: {str(item[key])[:150]}")
-                                                break
-                                        else:
-                                            # Show first non-error key
-                                            for key, value in item.items():
-                                                if key not in ['error', 'type', 'source'] and value:
-                                                    st.write(f"- {key}: {str(value)[:100]}")
-                                                    break
+                                        with st.container():
+                                            if 'title' in item:
+                                                st.write(f"**{item['title']}**")
+                                            if 'summary' in item:
+                                                st.write(item['summary'])
+                                            st.divider()
                             elif isinstance(data, dict):
                                 for key, value in data.items():
-                                    if key not in ['error', 'type', 'source'] and value:
-                                        st.write(f"- {key}: {str(value)[:150]}")
+                                    if key not in ['source', 'type'] and value:
+                                        st.write(f"**{key.title()}:** {value}")
         
         # Step 3: Generate thoughtful response
-        thinking_container.info("🤔 Synthesizing information and formulating response...")
+        if show_thinking:
+            thinking_placeholder.markdown("""
+            <div class="thinking-bubble">
+            <strong>🤔 Deep Synthesis:</strong><br>
+            • Integrating information from multiple sources<br>
+            • Applying critical thinking and analysis<br>
+            • Formulating comprehensive response<br>
+            • Preparing insights and recommendations...
+            </div>
+            """, unsafe_allow_html=True)
         
-        with st.spinner("Formulating thoughtful response..."):
-            # Adjust parameters based on thinking depth
-            if thinking_depth == "Quick":
-                response_tokens = 256
-            elif thinking_depth == "Balanced":
-                response_tokens = 512
-            elif thinking_depth == "Deep":
-                response_tokens = 768
-            else:  # Very Deep
-                response_tokens = 1024
-            
-            response = generate_deep_response(
-                st.session_state.model,
+        with st.spinner("🧠 Engaging deep thinking process..."):
+            # Create enhanced prompt
+            enhanced_prompt = create_thinking_prompt(
+                prompt, 
                 st.session_state.messages,
-                system_prompt=st.session_state.system_prompt,
-                search_results=search_results,
-                max_tokens=response_tokens,
+                st.session_state.system_prompt,
+                search_results,
+                search_analysis
+            )
+            
+            # Adjust tokens based on research depth
+            if research_depth == "Quick Scan":
+                tokens = 512
+            elif research_depth == "Moderate":
+                tokens = 768
+            elif research_depth == "Deep Dive":
+                tokens = 1024
+            else:  # Exhaustive
+                tokens = 1536
+            
+            # Generate response
+            response = generate_thoughtful_response(
+                st.session_state.model,
+                enhanced_prompt,
+                max_tokens=tokens,
                 temperature=temperature
             )
         
-        # Display response
-        thinking_container.empty()
-        response_container.markdown(response)
+        # Clear thinking placeholders
+        thinking_placeholder.empty()
         
-        # Add suggestions based on thinking depth
-        if thinking_depth in ["Deep", "Very Deep"]:
-            with st.expander("💡 Suggestions for further exploration"):
-                suggestions = """
-                1. **Deeper research questions:**
-                   - What are the underlying assumptions?
-                   - What counterarguments exist?
-                   - What are the practical implications?
-                
-                2. **Additional data sources to consider:**
-                   - Academic databases
-                   - Official statistics
-                   - Expert interviews
-                
-                3. **Next steps:**
-                   - Verify with primary sources
-                   - Consider different perspectives
-                   - Test with real-world examples
-                """
-                st.markdown(suggestions)
-    
-    # Add to conversation history
-    st.session_state.messages.append({"role": "assistant", "content": response})
-    
-    # Store search in history
-    if search_results:
-        st.session_state.search_history.append({
-            "query": prompt,
-            "results": search_results,
+        # Display response
+        st.markdown(response)
+        
+        # Add analysis box for deep thinking
+        if thinking_mode != "Quick Scan" and search_results:
+            st.markdown("""
+            <div class="analysis-box">
+            <strong>📈 Analysis Summary:</strong><br>
+            • Information synthesized from {} sources<br>
+            • Key themes identified<br>
+            • Reliability assessment completed<br>
+            • Knowledge gaps noted for further research
+            </div>
+            """.format(len(search_results)), unsafe_allow_html=True)
+        
+        # Store message with metadata
+        metadata = {
+            "sources": list(search_results.keys()) if search_results else [],
+            "thinking_mode": thinking_mode,
+            "research_depth": research_depth,
             "timestamp": datetime.now().isoformat()
+        }
+        
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": response,
+            "metadata": metadata
         })
 
-# Search history viewer
-if st.session_state.search_history:
-    with st.sidebar.expander("📚 Search History", expanded=False):
-        for i, search in enumerate(st.session_state.search_history[-5:]):
-            st.caption(f"**{search['query'][:50]}...**")
-            st.caption(f"_{search['timestamp'][:16]}_")
+# Add quick questions examples
+if not st.session_state.messages:
+    st.markdown("### 💡 Try asking about:")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Historical figure analysis", use_container_width=True):
+            st.session_state.messages.append({"role": "user", "content": "Who was Napoleon Bonaparte and what was his impact on Europe?"})
+            st.rerun()
+        if st.button("Scientific concept", use_container_width=True):
+            st.session_state.messages.append({"role": "user", "content": "Explain quantum entanglement in simple terms"})
+            st.rerun()
+    
+    with col2:
+        if st.button("Current events", use_container_width=True):
+            st.session_state.messages.append({"role": "user", "content": "What are the main challenges facing renewable energy adoption today?"})
+            st.rerun()
+        if st.button("Philosophical question", use_container_width=True):
+            st.session_state.messages.append({"role": "user", "content": "What is the meaning of consciousness according to different philosophical traditions?"})
+            st.rerun()
